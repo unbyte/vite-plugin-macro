@@ -126,10 +126,11 @@ export type Helper = {
 
   /**
    * Check if an import statement has been added to the target program already.
+   * Note that hasImported() will not trim extension for moduleName.
    * @param imports an import
-   * @param program node of the target program. use the one currently being handled by default.
+   * @param program node path of the target program. use the one currently being handled by default.
    */
-  hasImported: (imports: ImportOption, program?: Program) => boolean
+  hasImported: (imports: ImportOption, program?: NodePath<Program>) => boolean
 
   /**
    * Prepend any node to the target program.
