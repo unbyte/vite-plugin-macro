@@ -13,7 +13,7 @@ $.exec('yarn link')
 const exampleToBeRun = process.argv[2]
 if (exampleToBeRun) {
   log(`Running example ${exampleToBeRun}...`)
-  $.exec('yarn dev', {
-    cwd: `./examples/${exampleToBeRun}`
-  })
+  const cwd= `./examples/${exampleToBeRun}`
+  $.exec('yarn link vite-plugin-macro', { cwd })
+  $.exec('yarn dev', { cwd })
 }
