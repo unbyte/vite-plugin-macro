@@ -48,6 +48,8 @@ const generateImportStmt = (imp: ImportOption) =>
     ? `import { ${imp.exportName} as ${imp.localName} } from '${imp.moduleName}'`
     : 'exportName' in imp
     ? `import { ${imp.exportName} } from '${imp.moduleName}'`
+    : 'namespaceName' in imp
+    ? `import * as ${imp.namespaceName} from '${imp.moduleName}'`
     : `import '${imp.moduleName}'`
 
 export function getHelper(
@@ -94,20 +96,16 @@ export function getHelper(
     }
   }
 
-  const hasImported: Helper['hasImported'] = (imp, program = thisProgram) => {
+  const findImported: Helper['findImported'] = (imp, program = thisProgram) => {
     // An import declaration can only be used in top-level.
     for (const path of program.get('body') as NodePath[]) {
       if (!path.isImportDeclaration()) continue
       if (!(path.node.source.value === imp.moduleName)) continue
       if ('defaultName' in imp) {
         // import defaultName from 'moduleName'
-        // import * as defaultName from 'moduleName'
         for (const s of path.node.specifiers) {
-          if (
-            (isImportDefaultSpecifier(s) || isImportNamespaceSpecifier(s)) &&
-            s.local.name === imp.defaultName
-          )
-            return true
+          if (isImportDefaultSpecifier(s) && s.local.name === imp.defaultName)
+            return path
         }
       } else if ('localName' in imp) {
         // import { exportName as localName } from 'moduleName'
@@ -118,7 +116,7 @@ export function getHelper(
             isIdentifier(s.imported) &&
             s.imported.name === imp.exportName
           )
-            return true
+            return path
         }
       } else if ('exportName' in imp) {
         // import { exportName } from 'moduleName'
@@ -128,29 +126,44 @@ export function getHelper(
             isIdentifier(s.imported) &&
             s.imported.name === imp.exportName
           )
-            return true
+            return path
+        }
+      } else if ('namespaceName' in imp) {
+        // import * as defaultName from 'moduleName'
+        for (const s of path.node.specifiers) {
+          if (
+            isImportNamespaceSpecifier(s) &&
+            s.local.name === imp.namespaceName
+          )
+            return path
         }
       } else {
         // import 'moduleName'
-        return true
+        return path
       }
     }
-
-    return false
   }
 
+  const hasImported: Helper['hasImported'] = (imp, program = thisProgram) => {
+    return findImported(imp, program) !== undefined
+  }
+
+  // returns
+  // - array: generated import statements
+  // - path: all import statements are duplicated, returns the node path of the last one
   function normalizeImports(
     imports: ImportOption | ImportOption[],
     program: NodePath<Program>
   ) {
     if (!Array.isArray(imports)) imports = [imports]
+    // remove duplicated
+    const toBeImported = imports.filter((imp) => !hasImported(imp, program))
+    // all import statements are duplicated, returns the node path of the last one
+    if (!toBeImported.length)
+      return findImported(imports[imports.length - 1], program)!
     return template.statements.ast(
       Array.from(
-        new Set(
-          imports
-            .filter((imp) => !hasImported(imp, program))
-            .map((imp) => generateImportStmt(imp))
-        )
+        new Set(toBeImported.map((imp) => generateImportStmt(imp)))
       ).join('; ')
     ) as ImportDeclaration[]
   }
@@ -159,14 +172,15 @@ export function getHelper(
     imports,
     program = thisProgram
   ) => {
-    const importStmts = normalizeImports(imports, program)
+    const toBeImported = normalizeImports(imports, program)
+    if (!Array.isArray(toBeImported)) return toBeImported
     const firstImport = (program.get('body') as NodePath[]).filter((p) =>
       p.isImportDeclaration()
     )[0]
     return (
       firstImport
-        ? firstImport.insertBefore(importStmts)
-        : program.unshiftContainer('body', importStmts)
+        ? firstImport.insertBefore(toBeImported)
+        : program.unshiftContainer('body', toBeImported)
     ).pop() as NodePath<ImportDeclaration>
   }
 
@@ -174,14 +188,15 @@ export function getHelper(
     imports,
     program = thisProgram
   ) => {
-    const importStmts = normalizeImports(imports, program)
+    const toBeImported = normalizeImports(imports, program)
+    if (!Array.isArray(toBeImported)) return toBeImported
     const lastImport = (program.get('body') as NodePath[])
       .filter((p) => p.isImportDeclaration())
       .pop()
     return (
       lastImport
-        ? lastImport.insertAfter(importStmts)
-        : program.unshiftContainer('body', importStmts)
+        ? lastImport.insertAfter(toBeImported)
+        : program.unshiftContainer('body', toBeImported)
     ).pop() as NodePath<ImportDeclaration>
   }
 
@@ -207,6 +222,7 @@ export function getHelper(
   return {
     projectDir,
     normalizePathPattern,
+    findImported,
     hasImported,
     prependImports,
     appendImports,
