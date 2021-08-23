@@ -157,11 +157,14 @@ export function getHelper(
   ) {
     if (!Array.isArray(imports)) imports = [imports]
     return template.statements.ast(
-      imports
-        .filter((imp) => !hasImported(imp, program.node))
-        .map((imp) => generateImportStmt(imp))
-        .join('; ')
-    )
+      Array.from(
+        new Set(
+          imports
+            .filter((imp) => !hasImported(imp, program.node))
+            .map((imp) => generateImportStmt(imp))
+        )
+      ).join('; ')
+    ) as ImportDeclaration[]
   }
 
   const prependImports: Helper['prependImports'] = (
